@@ -5,6 +5,7 @@
 interface SkeletonNode {
   id: string;
   selector: string;
+  fallbackSelector?: string;
   type: "heading" | "nav" | "section" | "link" | "image" | "text" | "list" | "form" | "unknown";
   textPreview: string;
   tag: string;
@@ -295,10 +296,20 @@ function walkDOM(el: Element | ShadowRoot, depth: number): SkeletonNode[] {
     // Skip elements with no text and no meaningful children
     if (textPreview.length === 0 && childNodes.length === 0) continue;
 
-    // Create the node
+    // Stamp a stable attribute on the element so the selector survives DOM re-renders
+    const nodeId = `node-${nodeCounter++}`;
+    child.setAttribute("data-pb-node", nodeId);
+
+    // Also capture the nth-child path now, while the DOM is in its extracted state.
+    // This becomes the fallback if a JS framework wipes the data-pb-node attribute
+    // during hydration / re-render while Gemini is processing.
+    const nthChildPath = generateSelector(child);
+
+    // Create the node — use the stable attribute as selector instead of nth-child path
     const node: SkeletonNode = {
-      id: `node-${nodeCounter++}`,
-      selector: generateSelector(child),
+      id: nodeId,
+      selector: `[data-pb-node="${nodeId}"]`,
+      fallbackSelector: nthChildPath !== `[data-pb-node="${nodeId}"]` ? nthChildPath : undefined,
       type: nodeType,
       textPreview,
       tag: child.tagName.toLowerCase(),
@@ -325,9 +336,10 @@ function walkDOM(el: Element | ShadowRoot, depth: number): SkeletonNode[] {
 }
 
 export function extractSkeleton(): PageSkeleton {
-  // Reset counters
+  // Reset counters and clear any stale stamps from previous runs
   nodeCounter = 0;
   totalNodes = 0;
+  document.querySelectorAll("[data-pb-node]").forEach(el => el.removeAttribute("data-pb-node"));
 
   const metaDesc = document.querySelector('meta[name="description"]');
 

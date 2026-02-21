@@ -105,7 +105,7 @@ function buildPrompt(skeleton: PageSkeleton, profile: UserProfile | EnhancedUser
 
   const profileContext = sections.join('\n\n');
 
-  return `You are an intelligent web page optimizer. Given a user's intent profile and a semantic skeleton of a web page, your job is to return surgical DOM transform instructions that reshape the page to surface what's most relevant to the user.
+  return `You are an aggressive web page optimizer. Your goal is to reshape a page into a compact, focused digest that fits in a SINGLE VIEWPORT — showing only what is directly relevant to the user's intent, collapsing everything else.
 
 USER PROFILE:
 ${profileContext}
@@ -117,26 +117,26 @@ PAGE SKELETON:
 ${JSON.stringify(skeleton.nodes, null, 0)}
 
 INSTRUCTIONS:
-Analyze the page structure and the user's intent. Return a JSON object with:
-1. "transforms": an array of transform instructions. Each has:
+Return a JSON object with these fields:
+1. "transforms": array of transform instructions. Each has:
    - "action": one of "highlight", "collapse", "reorder", "annotate", "dim"
-   - "selector": the CSS selector from the skeleton (copy exactly)
-   - "reason": brief explanation (5-10 words)
-   - "relevance": 0-100 score
-   - "position": (only for reorder) "top" or "above:{selector}"
-   - "annotation": (only for annotate) short text badge
-2. "summary": one sentence describing what you changed
-3. "inferredIntent": one sentence describing what you think the user wants
+   - "selector": CSS selector from the skeleton (copy exactly, never invent)
+   - "reason": 5-8 words
+   - "relevance": 0-100
+   - "position": (reorder only) "top" or "above:{selector}"
+   - "annotation": (annotate only) max 4 words, e.g. "★ Relevant to AI"
+2. "summary": one sentence — what you reshaped and why
+3. "inferredIntent": one sentence — what the user is trying to accomplish
+4. "digest": 2-3 sentences summarising ONLY the most relevant content on this page for this user. Write naturally, as if briefing them. Max 60 words.
 
-RULES:
-- Use "highlight" for elements directly relevant to the user's intent
-- Use "collapse" for sections that are noise (e.g., unrelated news, ads, promotional content)
-- Use "reorder" sparingly — only move things to "top" if they're clearly the most important
-- Use "annotate" to add helpful context (e.g., "★ Relevant to your job search")
-- Use "dim" for low-relevance but not totally irrelevant content
-- Be conservative: if unsure, don't transform. A wrong transform is worse than no transform.
-- Return 5-15 transforms max. Quality over quantity.
-- Only use selectors that exist in the skeleton. Never invent selectors.
+TRANSFORMATION RULES — be aggressive:
+- COLLAPSE: hide every section not directly serving the user's intent. Expect 60-80% of the page to be collapsed. When in doubt, collapse it. Collapsed content is still accessible by scrolling.
+- REORDER: move the 2-4 most relevant sections to "top" so the user sees them immediately without scrolling.
+- HIGHLIGHT: mark the 2-3 most directly relevant individual elements with a subtle accent.
+- ANNOTATE: label key elements with why they're relevant (max 4 of these).
+- DIM: for tangentially related content you kept but deprioritised.
+- Return 10-25 transforms. A sparse set will not produce a compact view — cover the whole page.
+- Only use selectors that appear in the skeleton above. Never invent selectors.
 
 Return ONLY valid JSON. No markdown, no backticks, no explanation outside the JSON.`;
 }
@@ -197,13 +197,16 @@ function parseResponse(raw: string): TransformResponse {
     });
 
     return {
-      transforms: validTransforms.slice(0, 15), // Cap at 15
+      transforms: validTransforms.slice(0, 25), // Cap at 25
       summary: typeof parsed.summary === "string" && parsed.summary.length > 0
         ? parsed.summary
-        : "Page optimized based on your interests.",
+        : "Page reshaped based on your interests.",
       inferredIntent: typeof parsed.inferredIntent === "string" && parsed.inferredIntent.length > 0
         ? parsed.inferredIntent
-        : "General browsing"
+        : "General browsing",
+      digest: typeof parsed.digest === "string" && parsed.digest.length > 0
+        ? parsed.digest
+        : undefined
     };
   } catch (e) {
     console.error("[Predictive Browser] Failed to parse LLM response:", e, raw);

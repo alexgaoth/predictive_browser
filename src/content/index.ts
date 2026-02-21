@@ -31,7 +31,7 @@ async function main() {
       const transformResponse = response.payload as TransformResponse;
       console.log("[Predictive Browser] Transforms received:", transformResponse);
 
-      await applyTransforms(transformResponse);
+      await applyTransforms(transformResponse, skeleton);
 
       // 6. Start signal collection on the transformed elements
       const appliedTransforms = transformResponse.transforms.map(t => ({
@@ -60,7 +60,7 @@ function waitForDomStable(): Promise<void> {
       timeout = window.setTimeout(() => {
         observer.disconnect();
         resolve();
-      }, 500);
+      }, 1000); // 1s of silence = DOM is stable
     });
 
     observer.observe(document.body, {
@@ -68,17 +68,17 @@ function waitForDomStable(): Promise<void> {
       subtree: true,
     });
 
-    // Fallback: resolve after 3 seconds no matter what
+    // Hard cap: extract no later than 6s (covers slow Next.js / heavy SPA hydration)
     setTimeout(() => {
       observer.disconnect();
       resolve();
-    }, 3000);
+    }, 6000);
 
-    // Initial timeout in case DOM is already stable
+    // Initial timeout — resolves early if DOM is already stable on load
     timeout = window.setTimeout(() => {
       observer.disconnect();
       resolve();
-    }, 500);
+    }, 1000);
   });
 }
 

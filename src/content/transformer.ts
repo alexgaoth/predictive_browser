@@ -1,19 +1,19 @@
 // src/content/transformer.ts — Transform Executor + Animation System
 // Owned by Session 3. Do NOT modify files outside this module.
 
-import type { TransformResponse, TransformInstruction } from '../types/interfaces.js';
+import type { TransformResponse, TransformInstruction, PageSkeleton, SkeletonNode } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
 // Timing Constants
 // ---------------------------------------------------------------------------
 
 const TIMING = {
-  STAGGER_DELAY: 80,
-  HIGHLIGHT_DURATION: 400,
-  COLLAPSE_DURATION: 500,
-  REORDER_DURATION: 600,
-  ANNOTATE_DURATION: 300,
-  DIM_DURATION: 400,
+  STAGGER_DELAY: 25,       // faster cascade for compact-view effect
+  HIGHLIGHT_DURATION: 300,
+  COLLAPSE_DURATION: 220,  // quick collapse — we're hiding a lot
+  REORDER_DURATION: 500,
+  ANNOTATE_DURATION: 250,
+  DIM_DURATION: 300,
   TOAST_DURATION: 3000,
 } as const;
 
@@ -195,8 +195,45 @@ function executeDim(el: HTMLElement, _instruction: TransformInstruction): void {
 // Task 3: The Orchestrator
 // ---------------------------------------------------------------------------
 
-export async function applyTransforms(response: TransformResponse): Promise<void> {
+/** Recursively build a map: primary selector → fallback nth-child selector */
+function buildFallbackMap(nodes: SkeletonNode[], map: Map<string, string>): void {
+  for (const node of nodes) {
+    if (node.fallbackSelector) {
+      map.set(node.selector, node.fallbackSelector);
+    }
+    if (node.children.length > 0) {
+      buildFallbackMap(node.children, map);
+    }
+  }
+}
+
+/** Find element by primary selector, then by fallback nth-child path, then re-stamp attribute */
+function findElement(selector: string, fallbackMap: Map<string, string>): HTMLElement | null {
+  // Primary: data-pb-node attribute
+  let el = document.querySelector(selector) as HTMLElement | null;
+  if (el) return el;
+
+  // Fallback: nth-child path (in case JS framework wiped data-pb-node during hydration)
+  const fallback = fallbackMap.get(selector);
+  if (fallback) {
+    el = document.querySelector(fallback) as HTMLElement | null;
+    if (el) {
+      // Re-stamp the attribute so later lookups on this element still work
+      const nodeId = selector.match(/data-pb-node="([^"]+)"/)?.[1];
+      if (nodeId) el.setAttribute("data-pb-node", nodeId);
+      return el;
+    }
+  }
+
+  return null;
+}
+
+export async function applyTransforms(response: TransformResponse, skeleton?: PageSkeleton): Promise<void> {
   injectStyles();
+
+  // Build fallback map from skeleton (nth-child paths as backup selectors)
+  const fallbackMap = new Map<string, string>();
+  if (skeleton) buildFallbackMap(skeleton.nodes, fallbackMap);
 
   // Sort by relevance (highest first)
   const sorted = [...response.transforms].sort((a, b) => b.relevance - a.relevance);
@@ -204,7 +241,7 @@ export async function applyTransforms(response: TransformResponse): Promise<void
   for (let i = 0; i < sorted.length; i++) {
     const instruction = sorted[i];
 
-    const el = document.querySelector(instruction.selector) as HTMLElement | null;
+    const el = findElement(instruction.selector, fallbackMap);
     if (!el) {
       console.warn(`[Predictive Browser] Selector not found: ${instruction.selector}`);
       continue;
@@ -241,9 +278,9 @@ export async function applyTransforms(response: TransformResponse): Promise<void
     }
   }
 
-  // Show summary toast
-  if (response.summary && response.transforms.length > 0) {
-    showToast(response.summary, response.inferredIntent);
+  // Inject digest panel — replaces the old toast
+  if (response.transforms.length > 0) {
+    injectDigestPanel(response);
   }
 }
 
@@ -252,7 +289,114 @@ function delay(ms: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Task 4: Summary Toast
+// Task 4: Digest Panel — persistent, site-styled summary at top of page
+// ---------------------------------------------------------------------------
+
+function parseLuminance(color: string): number | null {
+  const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return null;
+  return (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+}
+
+function isColorDark(color: string): boolean {
+  const l = parseLuminance(color);
+  return l !== null && l < 0.5;
+}
+
+/** Walk up from a candidate element until we find a non-transparent background. */
+function resolveBackground(start: Element): string {
+  let el: Element | null = start;
+  while (el) {
+    const bg = getComputedStyle(el).backgroundColor;
+    if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
+    el = el.parentElement;
+  }
+  return "#ffffff";
+}
+
+/** Extract the site's real font, background, text, and accent colours. */
+function getSiteStyle() {
+  const content = document.querySelector("main, [role='main'], article, #content, .content") ?? document.body;
+  const heading = document.querySelector("h1, h2, h3") ?? content;
+
+  const fontFamily =
+    getComputedStyle(heading).fontFamily ||
+    getComputedStyle(content).fontFamily ||
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+  const bgColor  = resolveBackground(content);
+  const isDark   = isColorDark(bgColor);
+  const textColor = getComputedStyle(content).color || (isDark ? "#ffffff" : "#111111");
+
+  // Use the page's link colour as accent if readable, otherwise fall back to indigo
+  const linkEl   = document.querySelector("a");
+  const linkColor = linkEl ? getComputedStyle(linkEl).color : null;
+  const accent   = linkColor && parseLuminance(linkColor) !== null ? linkColor : "#6366f1";
+
+  return { fontFamily, isDark, textColor, accent };
+}
+
+function injectDigestPanel(response: TransformResponse): void {
+  document.getElementById("pb-digest")?.remove();
+
+  const { fontFamily, isDark, textColor, accent } = getSiteStyle();
+
+  const subtleColor = isDark ? "rgba(255,255,255,0.38)" : "rgba(0,0,0,0.36)";
+  const panelBg     = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.025)";
+  const borderColor = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.09)";
+
+  const panel = document.createElement("div");
+  panel.id = "pb-digest";
+  panel.style.cssText = `
+    font-family: ${fontFamily};
+    background: ${panelBg};
+    border-bottom: 1px solid ${borderColor};
+    border-left: 3px solid ${accent};
+    padding: 10px 36px 10px 14px;
+    position: relative;
+    z-index: 9999;
+    box-sizing: border-box;
+    width: 100%;
+    color: ${textColor};
+    opacity: 0;
+    transition: opacity 280ms ease;
+  `;
+
+  // Label row
+  const label = document.createElement("div");
+  label.style.cssText = `font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: ${accent}; margin-bottom: 5px;`;
+  label.textContent = `\u{1F52E} Focused view \u00B7 ${response.inferredIntent}`;
+
+  // Digest / summary text
+  const body = document.createElement("div");
+  body.style.cssText = `font-size: 13px; line-height: 1.55; color: ${textColor};`;
+  body.textContent = response.digest ?? response.summary;
+
+  // Dismiss button
+  const dismiss = document.createElement("button");
+  dismiss.textContent = "\u2715";
+  dismiss.title = "Dismiss";
+  dismiss.style.cssText = `
+    position: absolute; top: 8px; right: 10px;
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; padding: 2px 4px; line-height: 1;
+    color: ${subtleColor}; transition: color 0.15s;
+  `;
+  dismiss.onmouseenter = () => { dismiss.style.color = textColor; };
+  dismiss.onmouseleave = () => { dismiss.style.color = subtleColor; };
+  dismiss.onclick = () => panel.remove();
+
+  panel.appendChild(label);
+  panel.appendChild(body);
+  panel.appendChild(dismiss);
+
+  document.body.insertBefore(panel, document.body.firstChild);
+
+  requestAnimationFrame(() => { panel.style.opacity = "1"; });
+}
+
+// ---------------------------------------------------------------------------
+// Task 4b: Toast (kept for potential future use)
 // ---------------------------------------------------------------------------
 
 function showToast(summary: string, intent: string): void {
@@ -383,7 +527,8 @@ export function cleanupTransforms(): void {
   // Remove all annotations
   document.querySelectorAll(".pb-annotation-badge").forEach(el => el.remove());
 
-  // Remove toast
+  // Remove digest panel and toast
+  document.getElementById("pb-digest")?.remove();
   document.getElementById("pb-toast")?.remove();
 
   // Restore all transformed elements
@@ -416,4 +561,7 @@ export function cleanupTransforms(): void {
       if (key.startsWith("pb")) delete htmlEl.dataset[key];
     });
   });
+
+  // Remove stable node stamps added by the extractor
+  document.querySelectorAll("[data-pb-node]").forEach(el => el.removeAttribute("data-pb-node"));
 }

@@ -12,8 +12,10 @@
 export interface SkeletonNode {
   /** Unique ID assigned during extraction (e.g., "node-0", "node-1") */
   id: string;
-  /** CSS selector that uniquely identifies this element */
+  /** Primary selector: [data-pb-node="node-N"] — stable if attribute survives re-render */
   selector: string;
+  /** Fallback nth-child path — used if data-pb-node attribute was wiped by a JS framework */
+  fallbackSelector?: string;
   /** Semantic tag type */
   type: "heading" | "nav" | "section" | "link" | "image" | "text" | "list" | "form" | "unknown";
   /** First ~80 chars of visible text content */
@@ -68,10 +70,12 @@ export interface TransformInstruction {
 export interface TransformResponse {
   /** Array of transforms to apply, ordered by relevance (highest first) */
   transforms: TransformInstruction[];
-  /** One-line summary of what was changed and why (for optional UI toast) */
+  /** One-line summary of what was changed and why */
   summary: string;
   /** Inferred user intent used for this transformation */
   inferredIntent: string;
+  /** 2-3 sentence digest of the most relevant content on this page, in natural language */
+  digest?: string;
 }
 
 // ---------------------------------------------------------------------------
