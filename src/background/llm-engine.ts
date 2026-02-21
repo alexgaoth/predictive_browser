@@ -7,7 +7,7 @@ import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
-const GEMINI_API_KEY = "AIzaSyBN1gakGsAJfmzpMRnxWJkLVOJTHXGCLbE"; // Replace before demo
+const GEMINI_API_KEY = ""; // Replace before demo
 
 // ---------------------------------------------------------------------------
 // Public API

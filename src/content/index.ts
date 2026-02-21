@@ -3,8 +3,7 @@
 // Message types referenced from src/types/interfaces.ts (Session 2).
 
 import { extractSkeleton } from './extractor.js';
-// TODO: Uncomment when Session 3's transformer is merged
-// import { applyTransforms } from './transformer.js';
+import { applyTransforms } from './transformer.js';
 
 // Inline type references until Session 2 merges interfaces.ts
 interface SkeletonMessage {
@@ -34,9 +33,8 @@ async function main() {
 
     // 5. Handle response
     if (response?.type === "TRANSFORMS_READY") {
-      // TODO: Uncomment when Session 3's transformer is merged
-      // applyTransforms(response.payload);
       console.log("[Predictive Browser] Transforms received:", response.payload);
+      await applyTransforms(response.payload);
     } else if (response?.type === "TRANSFORM_ERROR") {
       console.error("[Predictive Browser] Transform error:", response.payload.message);
     }

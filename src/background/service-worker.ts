@@ -29,14 +29,17 @@ chrome.runtime.onMessage.addListener(
 
     if ((message as unknown as { type: string }).type === "UPDATE_FOCUS") {
       const focus = (message as unknown as { payload?: { focus?: string } }).payload?.focus ?? "";
-      profileManager.updateFocus(focus).then(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (sendResponse as (r: any) => void)({ type: "FOCUS_UPDATED" });
-      }).catch(err => {
-        console.error("[Predictive Browser] Failed to update focus:", err);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (sendResponse as (r: any) => void)({ type: "FOCUS_UPDATED", error: String(err) });
-      });
+      ensureInitialized()
+        .then(() => profileManager.updateFocus(focus))
+        .then(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (sendResponse as (r: any) => void)({ type: "FOCUS_UPDATED" });
+        })
+        .catch(err => {
+          console.error("[Predictive Browser] Failed to update focus:", err);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (sendResponse as (r: any) => void)({ type: "FOCUS_UPDATED", error: String(err) });
+        });
       return true;
     }
 

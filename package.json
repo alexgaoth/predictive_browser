@@ -2,12 +2,13 @@
   "name": "predictive-browser",
   "version": "0.1.0",
   "scripts": {
-    "build": "tsc && shx cp src/popup/popup.html dist/popup/ && shx cp src/popup/popup.css dist/popup/ && shx cp manifest.json dist/ && shx cp -r assets dist/",
-    "watch": "tsc --watch"
+    "build": "tsc --noEmit && shx mkdir -p dist/content dist/background dist/popup && esbuild src/content/index.ts --bundle --outfile=dist/content/index.js --target=chrome112 && esbuild src/background/service-worker.ts --bundle --format=esm --outfile=dist/background/service-worker.js --target=chrome112 && esbuild src/popup/popup.ts --bundle --outfile=dist/popup/popup.js --target=chrome112 && shx cp src/popup/popup.html dist/popup/ && shx cp src/popup/popup.css dist/popup/ && shx cp manifest.json dist/ && shx cp -r assets dist/",
+    "watch": "esbuild src/content/index.ts --bundle --outfile=dist/content/index.js --target=chrome112 --watch"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@types/chrome": "^0.0.268",
+    "esbuild": "^0.20.0",
     "shx": "^0.3.4",
     "typescript": "^5.3.0"
   },
