@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "history"
+    "history",
+    "tabs"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {

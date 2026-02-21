@@ -82,4 +82,103 @@ export interface ErrorMessage {
         message: string;
     };
 }
-export type ExtensionMessage = SkeletonMessage | TransformMessage | ErrorMessage;
+export type EngagementType = "click" | "scroll_into_view" | "hover" | "expand";
+export interface EngagementSignal {
+    /** CSS selector of the engaged element */
+    selector: string;
+    /** What transform action was applied to this element */
+    action: TransformAction;
+    /** Type of engagement */
+    engagementType: EngagementType;
+    /** Timestamp of the engagement */
+    timestamp: number;
+}
+export interface PageVisitSignal {
+    url: string;
+    title: string;
+    /** Referring URL */
+    referrer: string;
+    /** Search query extracted from referrer/URL params, if any */
+    searchQuery: string;
+    /** Scroll depth 0-100 */
+    scrollDepth: number;
+    /** Dwell time in milliseconds */
+    dwellTime: number;
+    /** Engagement events on transformed elements */
+    engagements: EngagementSignal[];
+    /** Which transforms were applied to this page */
+    appliedTransforms: {
+        selector: string;
+        action: TransformAction;
+    }[];
+    /** Timestamp when the page was first loaded */
+    visitedAt: number;
+}
+/** Content → Background: page-level signals on unload */
+export interface PageSignalsMessage {
+    type: "PAGE_SIGNALS";
+    payload: PageVisitSignal;
+}
+/** Content → Background: real-time engagement event */
+export interface EngagementEventMessage {
+    type: "ENGAGEMENT_EVENT";
+    payload: EngagementSignal & {
+        url: string;
+    };
+}
+export interface TopicScore {
+    topic: string;
+    score: number;
+    /** Last time this topic was seen */
+    lastSeen: number;
+}
+export interface DomainProfile {
+    domain: string;
+    visitCount: number;
+    avgDwellTime: number;
+    avgScrollDepth: number;
+    lastVisited: number;
+    /** Top topics associated with this domain */
+    topics: string[];
+}
+export interface BrowsingSession {
+    id: string;
+    startedAt: number;
+    lastActivityAt: number;
+    urls: string[];
+    searchQueries: string[];
+}
+export type TimeOfDay = "morning" | "afternoon" | "evening";
+export type DayType = "weekday" | "weekend";
+export type TemporalBucketKey = `${DayType}_${TimeOfDay}`;
+export interface TemporalBucket {
+    key: TemporalBucketKey;
+    /** Topics active during this time bucket */
+    topics: string[];
+    /** Number of visits in this bucket */
+    visitCount: number;
+}
+export interface TransformFeedback {
+    action: TransformAction;
+    appliedCount: number;
+    engagedCount: number;
+}
+export interface SignalStore {
+    pageVisits: PageVisitSignal[];
+    domainProfiles: DomainProfile[];
+    topicScores: TopicScore[];
+    engagements: EngagementSignal[];
+    sessions: BrowsingSession[];
+    temporalBuckets: TemporalBucket[];
+    transformFeedback: TransformFeedback[];
+    lastCleanup: number;
+}
+export interface EnhancedUserProfile extends UserProfile {
+    topicModel: TopicScore[];
+    currentSession: BrowsingSession | null;
+    temporalBucket: TemporalBucket | null;
+    transformFeedback: TransformFeedback[];
+    openTabTitles: string[];
+    inboundSearchQuery: string;
+}
+export type ExtensionMessage = SkeletonMessage | TransformMessage | ErrorMessage | PageSignalsMessage | EngagementEventMessage;

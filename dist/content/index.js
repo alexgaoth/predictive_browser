@@ -1,7 +1,8 @@
 // src/content/index.ts
 // Orchestrator — wires extractor to messaging to transformer.
-// Message types referenced from src/types/interfaces.ts (Session 2).
 import { extractSkeleton } from './extractor.js';
+import { applyTransforms } from './transformer.js';
+import { startSignalCollection } from './signal-collector.js';
 async function main() {
     // 1. Wait for page to settle (handle SPAs)
     await waitForDomStable();
@@ -20,16 +21,26 @@ async function main() {
         });
         // 5. Handle response
         if (response?.type === "TRANSFORMS_READY") {
-            // TODO: Uncomment when Session 3's transformer is merged
-            // applyTransforms(response.payload);
-            console.log("[Predictive Browser] Transforms received:", response.payload);
+            const transformResponse = response.payload;
+            console.log("[Predictive Browser] Transforms received:", transformResponse);
+            await applyTransforms(transformResponse);
+            // 6. Start signal collection on the transformed elements
+            const appliedTransforms = transformResponse.transforms.map(t => ({
+                selector: t.selector,
+                action: t.action,
+            }));
+            startSignalCollection(appliedTransforms);
         }
         else if (response?.type === "TRANSFORM_ERROR") {
             console.error("[Predictive Browser] Transform error:", response.payload.message);
+            // Still collect basic page signals even without transforms
+            startSignalCollection([]);
         }
     }
     catch (err) {
         console.error("[Predictive Browser] Failed to send skeleton:", err);
+        // Collect basic page signals even on error
+        startSignalCollection([]);
     }
 }
 function waitForDomStable() {
