@@ -273,7 +273,7 @@ function enforceChildLimit(children: SkeletonNode[]): SkeletonNode[] {
   return kept;
 }
 
-function walkDOM(el: Element, depth: number): SkeletonNode[] {
+function walkDOM(el: Element | ShadowRoot, depth: number): SkeletonNode[] {
   if (depth > MAX_DEPTH || totalNodes >= MAX_NODES) return [];
 
   const results: SkeletonNode[] = [];

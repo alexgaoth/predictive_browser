@@ -365,7 +365,7 @@ function getTestSelector(el: Element): string {
   const path: string[] = [];
   let current: Element | null = el;
   while (current && current !== document.body) {
-    const parent = current.parentElement;
+    const parent: Element | null = current.parentElement;
     if (parent) {
       const index = Array.from(parent.children).indexOf(current) + 1;
       path.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);

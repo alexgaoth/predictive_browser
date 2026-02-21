@@ -2,12 +2,18 @@
   "name": "predictive-browser",
   "version": "0.1.0",
   "scripts": {
-    "build": "tsc && cp src/popup/popup.html dist/popup/ && cp src/popup/popup.css dist/popup/ && cp manifest.json dist/ && cp -r assets dist/",
+    "build": "tsc && shx cp src/popup/popup.html dist/popup/ && shx cp src/popup/popup.css dist/popup/ && shx cp manifest.json dist/ && shx cp -r assets dist/",
     "watch": "tsc --watch"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
     "@anthropic-ai/sdk": "^0.39.0",
-    "@types/chrome": "^0.0.268"
+    "@types/chrome": "^0.0.268",
+    "shx": "^0.3.4",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "build": "^0.1.4",
+    "npm": "^11.10.1",
+    "run": "^1.5.0"
   }
 }

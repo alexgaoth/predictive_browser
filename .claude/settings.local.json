@@ -3,7 +3,10 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(python3:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(cd \"E:/predictive_browser\" && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"E:/predictive_browser\" && npm run build 2>&1)",
+      "Bash(cd \"E:/predictive_browser\" && npm install 2>&1)"
     ]
   }
 }
