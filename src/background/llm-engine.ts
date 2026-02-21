@@ -1,4 +1,4 @@
-import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction, EnhancedUserProfile } from '../types/interfaces.js';
+import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction, EnhancedUserProfile, SkeletonNode, LinkPreview } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
 // Gemini Flash API setup
@@ -214,6 +214,208 @@ function parseResponse(raw: string): TransformResponse {
       inferredIntent: "Unknown"
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Link Preview — Second Pass Pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect all link nodes from the skeleton, filter invalid ones, dedupe, cap at 20.
+ * Ask Gemini to pick the top 5 most relevant for this user.
+ */
+async function evaluateLinks(
+  skeleton: PageSkeleton,
+  profile: UserProfile | EnhancedUserProfile
+): Promise<{ href: string; selector: string }[]> {
+  const links: { href: string; selector: string }[] = [];
+  const seen = new Set<string>();
+
+  function walk(nodes: SkeletonNode[]): void {
+    for (const node of nodes) {
+      if (
+        node.type === "link" &&
+        node.href &&
+        !node.href.startsWith("#") &&
+        !node.href.startsWith("javascript:") &&
+        !seen.has(node.href)
+      ) {
+        seen.add(node.href);
+        links.push({ href: node.href, selector: node.selector });
+      }
+      if (node.children.length > 0) walk(node.children);
+    }
+  }
+  walk(skeleton.nodes);
+
+  if (links.length === 0) return [];
+
+  const capped = links.slice(0, 20);
+
+  const profileContext = [
+    profile.currentFocus && `Current focus: ${profile.currentFocus}`,
+    profile.interests.length > 0 && `Interests: ${profile.interests.join(", ")}`,
+    profile.seedContext
+  ].filter(Boolean).join("\n");
+
+  const prompt = `You are a link relevance evaluator. Given a user profile and a list of links from a web page, pick up to 5 links that are MOST relevant and interesting for this user.
+
+USER PROFILE:
+${profileContext}
+
+PAGE: ${skeleton.title} (${skeleton.url})
+
+LINKS:
+${JSON.stringify(capped.map(l => ({ href: l.href, selector: l.selector })), null, 0)}
+
+Return a JSON object with:
+- "selected": array of objects with "href" and "selector" fields (up to 5, copied exactly from the input)
+
+Only pick links that would genuinely help or interest this user. If none are relevant, return an empty array.
+Return ONLY valid JSON. No markdown, no backticks.`;
+
+  const raw = await callGemini(prompt);
+  try {
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed.selected)) return [];
+    return parsed.selected
+      .filter((s: unknown) => {
+        if (typeof s !== "object" || s === null) return false;
+        const item = s as Record<string, unknown>;
+        return typeof item.href === "string" && typeof item.selector === "string";
+      })
+      .slice(0, 5) as { href: string; selector: string }[];
+  } catch {
+    console.error("[Predictive Browser] Failed to parse link evaluation response");
+    return [];
+  }
+}
+
+/**
+ * Fetch up to 5 URLs in parallel (5s timeout each), extract title + first ~2000 chars,
+ * then send ALL to Gemini in a single batched call for summaries.
+ */
+async function fetchAndSummarize(
+  urls: string[]
+): Promise<{ href: string; title: string; summary: string }[]> {
+  const fetched = await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const resp = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        const html = await resp.text();
+
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].trim().slice(0, 200) : url;
+
+        const text = html
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 2000);
+
+        return { href: url, title, text };
+      } catch {
+        console.warn("[Predictive Browser] Failed to fetch:", url);
+        return null;
+      }
+    })
+  );
+
+  const successful = fetched.filter((f): f is NonNullable<typeof f> => f !== null);
+  if (successful.length === 0) return [];
+
+  const prompt = `Summarize each of the following web pages in 1-2 sentences. Focus on what the page is about and why someone might find it useful.
+
+PAGES:
+${successful.map((p, i) => `[${i + 1}] URL: ${p.href}\nTitle: ${p.title}\nContent: ${p.text}`).join("\n\n")}
+
+Return a JSON object with:
+- "summaries": array of objects with "href" and "summary" fields, in the same order as the input
+
+Return ONLY valid JSON. No markdown, no backticks.`;
+
+  const raw = await callGemini(prompt);
+  try {
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed.summaries)) return [];
+    return parsed.summaries
+      .filter((s: unknown) => {
+        if (typeof s !== "object" || s === null) return false;
+        const item = s as Record<string, unknown>;
+        return typeof item.href === "string" && typeof item.summary === "string";
+      })
+      .map((s: { href: string; summary: string }) => ({
+        href: s.href,
+        title: successful.find(p => p.href === s.href)?.title || s.href,
+        summary: s.summary
+      }));
+  } catch {
+    console.error("[Predictive Browser] Failed to parse summary response");
+    return [];
+  }
+}
+
+/**
+ * Orchestrator: evaluateLinks -> fetchAndSummarize -> build LinkPreview[] + TransformInstruction[].
+ */
+export async function generateLinkPreviews(
+  skeleton: PageSkeleton,
+  profile: UserProfile | EnhancedUserProfile
+): Promise<{ previews: LinkPreview[]; transforms: TransformInstruction[] }> {
+  console.log("[Predictive Browser] Starting link preview second pass...");
+
+  const topLinks = await evaluateLinks(skeleton, profile);
+  if (topLinks.length === 0) {
+    console.log("[Predictive Browser] No relevant links found for preview.");
+    return { previews: [], transforms: [] };
+  }
+  console.log("[Predictive Browser] Gemini selected", topLinks.length, "links for preview");
+
+  // Resolve relative URLs against the page URL
+  const resolvedLinks = topLinks.map(l => ({
+    ...l,
+    href: new URL(l.href, skeleton.url).href
+  }));
+
+  const summaries = await fetchAndSummarize(resolvedLinks.map(l => l.href));
+  console.log("[Predictive Browser] Fetched and summarized", summaries.length, "pages");
+
+  const previews: LinkPreview[] = [];
+  const transforms: TransformInstruction[] = [];
+
+  for (const link of resolvedLinks) {
+    const summary = summaries.find(s => s.href === link.href);
+    if (!summary) continue;
+
+    const relevance = 80 - previews.length * 5;
+
+    previews.push({
+      href: link.href,
+      selector: link.selector,
+      title: summary.title,
+      summary: summary.summary,
+      relevance
+    });
+
+    transforms.push({
+      action: "annotate",
+      selector: link.selector,
+      reason: "Link preview from second pass",
+      annotation: `${summary.title}: ${summary.summary}`,
+      relevance,
+      badgeClass: "pb-link-preview-badge"
+    } as TransformInstruction & { badgeClass: string });
+  }
+
+  console.log("[Predictive Browser] Link preview second pass complete:", previews.length, "previews");
+  return { previews, transforms };
 }
 
 // ---------------------------------------------------------------------------

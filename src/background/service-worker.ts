@@ -1,5 +1,5 @@
 import { ProfileManager } from './profile-manager.js';
-import { generateTransforms } from './llm-engine.js';
+import { generateTransforms, generateLinkPreviews } from './llm-engine.js';
 import {
   initializeAggregator,
   processPageSignal,
@@ -13,6 +13,7 @@ import type {
   ErrorMessage,
   PageSignalsMessage,
   EngagementEventMessage,
+  LinkPreviewMessage,
 } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
@@ -51,9 +52,9 @@ async function getOpenTabTitles(): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, sendResponse) => {
+  (message: ExtensionMessage, sender, sendResponse) => {
     if (message.type === "SKELETON_READY") {
-      handleSkeleton(message as SkeletonMessage, sendResponse);
+      handleSkeleton(message as SkeletonMessage, sender, sendResponse);
       return true; // Required to keep the message channel open for async response
     }
 
@@ -93,6 +94,7 @@ chrome.runtime.onMessage.addListener(
 
 async function handleSkeleton(
   message: SkeletonMessage,
+  sender: chrome.runtime.MessageSender,
   sendResponse: (response: TransformMessage | ErrorMessage) => void
 ): Promise<void> {
   try {
@@ -120,6 +122,25 @@ async function handleSkeleton(
       type: "TRANSFORMS_READY",
       payload: transforms
     });
+
+    // Fire-and-forget: second pass for link previews
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) {
+      generateLinkPreviews(message.payload, enhancedProfile)
+        .then((result) => {
+          if (result.previews.length > 0) {
+            const msg: LinkPreviewMessage = {
+              type: "LINK_PREVIEWS_READY",
+              payload: result
+            };
+            chrome.tabs.sendMessage(tabId, msg);
+            console.log("[Predictive Browser] Sent", result.previews.length, "link previews to tab", tabId);
+          }
+        })
+        .catch((err) => {
+          console.warn("[Predictive Browser] Link preview second pass failed (non-fatal):", err);
+        });
+    }
   } catch (error) {
     console.error("[Predictive Browser] Error:", error);
     sendResponse({

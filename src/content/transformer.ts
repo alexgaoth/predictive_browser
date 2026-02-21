@@ -59,6 +59,20 @@ function injectStyles(): void {
       letter-spacing: 0.3px;
     }
 
+    .pb-link-preview-badge {
+      display: inline-block;
+      background: #E8F8E8;
+      color: #2E7D32;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-bottom: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+      letter-spacing: 0.3px;
+    }
+
     @keyframes pb-pulse {
       0% { transform: scale(1); }
       50% { transform: scale(1.005); }
@@ -164,8 +178,9 @@ function executeReorder(el: HTMLElement, instruction: TransformInstruction): voi
 function executeAnnotate(el: HTMLElement, instruction: TransformInstruction): void {
   if (!instruction.annotation) return;
 
+  const badgeClass = (instruction as TransformInstruction & { badgeClass?: string }).badgeClass || "pb-annotation-badge";
   const badge = document.createElement("div");
-  badge.className = "pb-annotation-badge";
+  badge.className = badgeClass;
   badge.textContent = instruction.annotation;
   badge.style.opacity = "0";
   badge.style.transform = "translateY(-4px)";
@@ -380,8 +395,8 @@ function getTestSelector(el: Element): string {
 // ---------------------------------------------------------------------------
 
 export function cleanupTransforms(): void {
-  // Remove all annotations
-  document.querySelectorAll(".pb-annotation-badge").forEach(el => el.remove());
+  // Remove all annotations (regular and link preview)
+  document.querySelectorAll(".pb-annotation-badge, .pb-link-preview-badge").forEach(el => el.remove());
 
   // Remove toast
   document.getElementById("pb-toast")?.remove();
