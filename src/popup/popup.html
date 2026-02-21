@@ -8,24 +8,103 @@
 </head>
 <body>
   <div class="container">
-    <h1>🔮 Predictive Browser</h1>
-    <p class="subtitle">Tell me what you're focused on and I'll reshape the web for you.</p>
-
-    <div class="input-group">
-      <label for="focus">Current focus</label>
-      <textarea
-        id="focus"
-        placeholder="e.g., Looking for ML engineering roles at early-stage startups..."
-        rows="3"
-      ></textarea>
+    <div class="header-row">
+      <h1>Predictive Browser</h1>
+      <label class="toggle-switch" title="Enable/disable extension">
+        <input type="checkbox" id="enabled" checked>
+        <span class="slider"></span>
+      </label>
     </div>
 
-    <button id="save">Save</button>
+    <!-- Focus Section -->
+    <section class="section">
+      <div class="section-header">Focus</div>
+      <div class="input-group">
+        <textarea
+          id="focus"
+          placeholder="e.g., Looking for ML engineering roles at early-stage startups..."
+          rows="3"
+        ></textarea>
+      </div>
+      <button id="save-focus" class="btn btn-primary">Save Focus</button>
+    </section>
+
+    <!-- API Key Section -->
+    <section class="section">
+      <div class="section-header">API Key</div>
+      <div class="input-group">
+        <div class="password-field">
+          <input type="password" id="api-key" placeholder="AIza..." autocomplete="off">
+          <button type="button" id="toggle-key" class="btn-icon" title="Show/hide key">
+            <span id="eye-icon">Show</span>
+          </button>
+        </div>
+        <div id="key-warning" class="warning hidden"></div>
+      </div>
+    </section>
+
+    <!-- Model Section -->
+    <section class="section">
+      <div class="section-header">Model</div>
+      <select id="model">
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+        <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
+        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+      </select>
+    </section>
+
+    <!-- Intensity Section -->
+    <section class="section">
+      <div class="section-header">Transform Intensity</div>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="intensity" value="conservative">
+          <span class="radio-label">Conservative</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="intensity" value="balanced" checked>
+          <span class="radio-label">Balanced</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="intensity" value="aggressive">
+          <span class="radio-label">Aggressive</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Transform Actions Section -->
+    <section class="section">
+      <div class="section-header">Enabled Actions</div>
+      <div class="checkbox-group">
+        <label class="checkbox-option">
+          <input type="checkbox" id="action-highlight" checked>
+          <span class="checkbox-label">Highlight</span>
+        </label>
+        <label class="checkbox-option">
+          <input type="checkbox" id="action-collapse" checked>
+          <span class="checkbox-label">Collapse</span>
+        </label>
+        <label class="checkbox-option">
+          <input type="checkbox" id="action-dim" checked>
+          <span class="checkbox-label">Dim</span>
+        </label>
+        <label class="checkbox-option">
+          <input type="checkbox" id="action-annotate" checked>
+          <span class="checkbox-label">Annotate</span>
+        </label>
+        <label class="checkbox-option">
+          <input type="checkbox" id="action-reorder" checked>
+          <span class="checkbox-label">Reorder</span>
+        </label>
+      </div>
+    </section>
+
+    <button id="save-settings" class="btn btn-primary">Save Settings</button>
 
     <div id="status" class="status hidden"></div>
 
     <div class="footer">
-      <p>Active on all pages • Powered by Gemini Flash</p>
+      <p>Active on all pages</p>
     </div>
   </div>
   <script src="popup.js"></script>

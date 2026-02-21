@@ -4,9 +4,18 @@
 import { extractSkeleton } from './extractor.js';
 import { applyTransforms } from './transformer.js';
 import { startSignalCollection } from './signal-collector.js';
-import type { TransformResponse } from '../types/interfaces.js';
+import type { TransformResponse, LinkPreviewMessage } from '../types/interfaces.js';
 
 async function main() {
+  // 0. Check if extension is enabled
+  try {
+    const stored = await chrome.storage.local.get("extensionSettings");
+    if (stored["extensionSettings"]?.enabled === false) {
+      console.log("[Predictive Browser] Extension is disabled, skipping.");
+      return;
+    }
+  } catch { /* proceed if storage read fails */ }
+
   // 1. Wait for page to settle (handle SPAs)
   await waitForDomStable();
 
@@ -50,6 +59,22 @@ async function main() {
     startSignalCollection([]);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Second pass listener — link previews arrive asynchronously
+// ---------------------------------------------------------------------------
+
+chrome.runtime.onMessage.addListener((message: { type: string }) => {
+  if (message.type === "LINK_PREVIEWS_READY") {
+    const msg = message as unknown as LinkPreviewMessage;
+    console.log("[Predictive Browser] Link previews received:", msg.payload.previews.length, "previews");
+    applyTransforms({
+      transforms: msg.payload.transforms,
+      summary: "",
+      inferredIntent: ""
+    });
+  }
+});
 
 function waitForDomStable(): Promise<void> {
   return new Promise((resolve) => {

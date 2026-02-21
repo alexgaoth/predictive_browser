@@ -235,6 +235,74 @@ export interface EnhancedUserProfile extends UserProfile {
 }
 
 // ---------------------------------------------------------------------------
+// Interface Contract 7: Extension Settings
+// ---------------------------------------------------------------------------
+
+export type GeminiModel = "gemini-2.0-flash" | "gemini-2.0-flash-lite" | "gemini-1.5-pro";
+export type TransformIntensity = "conservative" | "balanced" | "aggressive";
+
+export interface ExtensionSettings {
+  apiKey: string;
+  enabled: boolean;
+  model: GeminiModel;
+  intensity: TransformIntensity;
+  enabledActions: {
+    highlight: boolean;
+    collapse: boolean;
+    dim: boolean;
+    annotate: boolean;
+    reorder: boolean;
+  };
+}
+
+export const DEFAULT_SETTINGS: ExtensionSettings = {
+  apiKey: "",
+  enabled: true,
+  model: "gemini-2.0-flash",
+  intensity: "balanced",
+  enabledActions: {
+    highlight: true,
+    collapse: true,
+    dim: true,
+    annotate: true,
+    reorder: true,
+  },
+};
+
+/** Popup → Background: "Settings have been updated" */
+export interface SettingsUpdatedMessage {
+  type: "SETTINGS_UPDATED";
+  payload: ExtensionSettings;
+}
+
+// ---------------------------------------------------------------------------
+// Interface Contract 8: Link Previews (Second Pass)
+// ---------------------------------------------------------------------------
+
+/** A preview of a linked page */
+export interface LinkPreview {
+  /** The link's href */
+  href: string;
+  /** CSS selector targeting the link element */
+  selector: string;
+  /** Title of the linked page */
+  title: string;
+  /** 1-2 sentence summary of the linked page */
+  summary: string;
+  /** Relevance score 0-100 */
+  relevance: number;
+}
+
+/** Background → Content script: "Here are link previews from the second pass" */
+export interface LinkPreviewMessage {
+  type: "LINK_PREVIEWS_READY";
+  payload: {
+    previews: LinkPreview[];
+    transforms: TransformInstruction[];
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Message Union
 // ---------------------------------------------------------------------------
 
@@ -243,4 +311,6 @@ export type ExtensionMessage =
   | TransformMessage
   | ErrorMessage
   | PageSignalsMessage
-  | EngagementEventMessage;
+  | EngagementEventMessage
+  | LinkPreviewMessage
+  | SettingsUpdatedMessage;

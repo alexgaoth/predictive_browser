@@ -1,5 +1,5 @@
 import { ProfileManager } from './profile-manager.js';
-import { generateTransforms } from './llm-engine.js';
+import { generateTransforms, generateLinkPreviews, invalidateSettingsCache } from './llm-engine.js';
 import {
   initializeAggregator,
   processPageSignal,
@@ -13,7 +13,10 @@ import type {
   ErrorMessage,
   PageSignalsMessage,
   EngagementEventMessage,
+  LinkPreviewMessage,
+  ExtensionSettings,
 } from '../types/interfaces.js';
+import { DEFAULT_SETTINGS } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
 // Module-level singletons — service workers are event-driven, not persistent,
@@ -51,9 +54,9 @@ async function getOpenTabTitles(): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, sendResponse) => {
+  (message: ExtensionMessage, sender, sendResponse) => {
     if (message.type === "SKELETON_READY") {
-      handleSkeleton(message as SkeletonMessage, sendResponse);
+      handleSkeleton(message as SkeletonMessage, sender, sendResponse);
       return true; // Required to keep the message channel open for async response
     }
 
@@ -64,6 +67,14 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "ENGAGEMENT_EVENT") {
       handleEngagementEvent(message as EngagementEventMessage);
+      return false;
+    }
+
+    if (message.type === "SETTINGS_UPDATED") {
+      invalidateSettingsCache();
+      console.log("[Predictive Browser] Settings updated");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sendResponse as (r: any) => void)({ type: "SETTINGS_ACKNOWLEDGED" });
       return false;
     }
 
@@ -93,9 +104,22 @@ chrome.runtime.onMessage.addListener(
 
 async function handleSkeleton(
   message: SkeletonMessage,
+  sender: chrome.runtime.MessageSender,
   sendResponse: (response: TransformMessage | ErrorMessage) => void
 ): Promise<void> {
   try {
+    // Check if extension is enabled
+    const stored = await chrome.storage.local.get("extensionSettings");
+    const settings: ExtensionSettings = { ...DEFAULT_SETTINGS, ...stored["extensionSettings"] };
+    if (!settings.enabled) {
+      console.log("[Predictive Browser] Extension is disabled, skipping transforms");
+      sendResponse({
+        type: "TRANSFORMS_READY",
+        payload: { transforms: [], summary: "", inferredIntent: "" }
+      });
+      return;
+    }
+
     await ensureInitialized();
     const baseProfile = profileManager.getProfile();
 
@@ -120,6 +144,25 @@ async function handleSkeleton(
       type: "TRANSFORMS_READY",
       payload: transforms
     });
+
+    // Fire-and-forget: second pass for link previews
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) {
+      generateLinkPreviews(message.payload, enhancedProfile)
+        .then((result) => {
+          if (result.previews.length > 0) {
+            const msg: LinkPreviewMessage = {
+              type: "LINK_PREVIEWS_READY",
+              payload: result
+            };
+            chrome.tabs.sendMessage(tabId, msg);
+            console.log("[Predictive Browser] Sent", result.previews.length, "link previews to tab", tabId);
+          }
+        })
+        .catch((err) => {
+          console.warn("[Predictive Browser] Link preview second pass failed (non-fatal):", err);
+        });
+    }
   } catch (error) {
     console.error("[Predictive Browser] Error:", error);
     sendResponse({
