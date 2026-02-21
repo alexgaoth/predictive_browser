@@ -1,6 +1,19 @@
 import { ProfileManager } from './profile-manager.js';
 import { generateTransforms } from './llm-engine.js';
-import type { ExtensionMessage, SkeletonMessage, TransformMessage, ErrorMessage } from '../types/interfaces.js';
+import {
+  initializeAggregator,
+  processPageSignal,
+  processEngagementEvent,
+  buildEnhancedProfile,
+} from './signal-aggregator.js';
+import type {
+  ExtensionMessage,
+  SkeletonMessage,
+  TransformMessage,
+  ErrorMessage,
+  PageSignalsMessage,
+  EngagementEventMessage,
+} from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
 // Module-level singletons — service workers are event-driven, not persistent,
@@ -12,7 +25,24 @@ let initialized = false;
 async function ensureInitialized(): Promise<void> {
   if (!initialized) {
     await profileManager.initialize();
+    await initializeAggregator();
     initialized = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tab Title Collection
+// ---------------------------------------------------------------------------
+
+async function getOpenTabTitles(): Promise<string[]> {
+  try {
+    const tabs = await chrome.tabs.query({});
+    return tabs
+      .map(t => t.title ?? '')
+      .filter(t => t.length > 0)
+      .slice(0, 5);
+  } catch {
+    return [];
   }
 }
 
@@ -25,6 +55,16 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "SKELETON_READY") {
       handleSkeleton(message as SkeletonMessage, sendResponse);
       return true; // Required to keep the message channel open for async response
+    }
+
+    if (message.type === "PAGE_SIGNALS") {
+      handlePageSignals(message as PageSignalsMessage);
+      return false;
+    }
+
+    if (message.type === "ENGAGEMENT_EVENT") {
+      handleEngagementEvent(message as EngagementEventMessage);
+      return false;
     }
 
     if ((message as unknown as { type: string }).type === "UPDATE_FOCUS") {
@@ -47,18 +87,32 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
 async function handleSkeleton(
   message: SkeletonMessage,
   sendResponse: (response: TransformMessage | ErrorMessage) => void
 ): Promise<void> {
   try {
     await ensureInitialized();
-    const profile = profileManager.getProfile();
+    const baseProfile = profileManager.getProfile();
+
+    // Collect open tab titles for context
+    const openTabTitles = await getOpenTabTitles();
+
+    // Extract inbound search query from the page URL
+    const searchQuery = extractSearchQueryFromUrl(message.payload.url);
+
+    // Build enhanced profile with all signals
+    const enhancedProfile = buildEnhancedProfile(baseProfile, openTabTitles, searchQuery);
 
     console.log("[Predictive Browser] Processing skeleton for:", message.payload.url);
-    console.log("[Predictive Browser] User profile:", profile.currentFocus || "(seed only)");
+    console.log("[Predictive Browser] Enhanced profile — topics:", enhancedProfile.topicModel.length,
+      "session URLs:", enhancedProfile.currentSession?.urls.length ?? 0);
 
-    const transforms = await generateTransforms(message.payload, profile);
+    const transforms = await generateTransforms(message.payload, enhancedProfile);
 
     console.log("[Predictive Browser] Generated", transforms.transforms.length, "transforms");
 
@@ -73,4 +127,40 @@ async function handleSkeleton(
       payload: { message: error instanceof Error ? error.message : "Unknown error" }
     });
   }
+}
+
+function handlePageSignals(message: PageSignalsMessage): void {
+  ensureInitialized().then(() => {
+    processPageSignal(message.payload);
+    console.log("[Predictive Browser] Processed page signals for:", message.payload.url);
+  }).catch(err => {
+    console.error("[Predictive Browser] Failed to process page signals:", err);
+  });
+}
+
+function handleEngagementEvent(message: EngagementEventMessage): void {
+  ensureInitialized().then(() => {
+    processEngagementEvent(message.payload);
+    console.log("[Predictive Browser] Engagement:", message.payload.engagementType,
+      "on", message.payload.selector);
+  }).catch(err => {
+    console.error("[Predictive Browser] Failed to process engagement:", err);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const SEARCH_PARAMS = ['q', 'query', 'search_query', 'p'];
+
+function extractSearchQueryFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    for (const param of SEARCH_PARAMS) {
+      const value = parsed.searchParams.get(param);
+      if (value) return value;
+    }
+  } catch { /* malformed URL */ }
+  return '';
 }

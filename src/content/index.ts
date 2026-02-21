@@ -1,15 +1,10 @@
 // src/content/index.ts
 // Orchestrator — wires extractor to messaging to transformer.
-// Message types referenced from src/types/interfaces.ts (Session 2).
 
 import { extractSkeleton } from './extractor.js';
 import { applyTransforms } from './transformer.js';
-
-// Inline type references until Session 2 merges interfaces.ts
-interface SkeletonMessage {
-  type: "SKELETON_READY";
-  payload: ReturnType<typeof extractSkeleton>;
-}
+import { startSignalCollection } from './signal-collector.js';
+import type { TransformResponse } from '../types/interfaces.js';
 
 async function main() {
   // 1. Wait for page to settle (handle SPAs)
@@ -29,17 +24,30 @@ async function main() {
     const response = await chrome.runtime.sendMessage({
       type: "SKELETON_READY",
       payload: skeleton,
-    } as SkeletonMessage);
+    });
 
     // 5. Handle response
     if (response?.type === "TRANSFORMS_READY") {
-      console.log("[Predictive Browser] Transforms received:", response.payload);
-      await applyTransforms(response.payload);
+      const transformResponse = response.payload as TransformResponse;
+      console.log("[Predictive Browser] Transforms received:", transformResponse);
+
+      await applyTransforms(transformResponse);
+
+      // 6. Start signal collection on the transformed elements
+      const appliedTransforms = transformResponse.transforms.map(t => ({
+        selector: t.selector,
+        action: t.action,
+      }));
+      startSignalCollection(appliedTransforms);
     } else if (response?.type === "TRANSFORM_ERROR") {
       console.error("[Predictive Browser] Transform error:", response.payload.message);
+      // Still collect basic page signals even without transforms
+      startSignalCollection([]);
     }
   } catch (err) {
     console.error("[Predictive Browser] Failed to send skeleton:", err);
+    // Collect basic page signals even on error
+    startSignalCollection([]);
   }
 }
 

@@ -1,4 +1,4 @@
-import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction } from '../types/interfaces.js';
+import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction, EnhancedUserProfile } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
 // Gemini Flash API setup
@@ -15,7 +15,7 @@ const GEMINI_API_KEY = ""; // Replace before demo
 
 export async function generateTransforms(
   skeleton: PageSkeleton,
-  profile: UserProfile
+  profile: UserProfile | EnhancedUserProfile
 ): Promise<TransformResponse> {
   const prompt = buildPrompt(skeleton, profile);
   const raw = await callGemini(prompt);
@@ -26,12 +26,84 @@ export async function generateTransforms(
 // Prompt Engineering
 // ---------------------------------------------------------------------------
 
-function buildPrompt(skeleton: PageSkeleton, profile: UserProfile): string {
-  const profileContext = [
-    profile.currentFocus && `Current focus: ${profile.currentFocus}`,
-    profile.interests.length > 0 && `Interests: ${profile.interests.join(", ")}`,
-    profile.seedContext
-  ].filter(Boolean).join("\n");
+function isEnhancedProfile(p: UserProfile | EnhancedUserProfile): p is EnhancedUserProfile {
+  return 'topicModel' in p;
+}
+
+function buildPrompt(skeleton: PageSkeleton, profile: UserProfile | EnhancedUserProfile): string {
+  const sections: string[] = [];
+
+  // 1. Current focus (always included if set)
+  if (profile.currentFocus) {
+    sections.push(`CURRENT FOCUS:\n${profile.currentFocus}`);
+  }
+
+  if (isEnhancedProfile(profile)) {
+    // 2. Topic model — top 10 weighted topics (replaces flat interests)
+    if (profile.topicModel.length > 0) {
+      const topicLines = profile.topicModel
+        .map(t => `- ${t.topic} (weight: ${t.score.toFixed(1)})`)
+        .join('\n');
+      sections.push(`INTEREST MODEL (learned from browsing behavior):\n${topicLines}`);
+    }
+
+    // 3. Session context — recent URLs + search queries
+    if (profile.currentSession) {
+      const recentUrls = profile.currentSession.urls.slice(-5).join(', ');
+      const queries = profile.currentSession.searchQueries.join(', ');
+      let sessionCtx = `CURRENT SESSION:\nRecent pages: ${recentUrls}`;
+      if (queries) sessionCtx += `\nSearch queries this session: ${queries}`;
+      sections.push(sessionCtx);
+    }
+
+    // 4. Inbound search query
+    if (profile.inboundSearchQuery) {
+      sections.push(`INBOUND SEARCH QUERY: "${profile.inboundSearchQuery}"\nPrioritize content matching this query.`);
+    }
+
+    // 5. Temporal context
+    if (profile.temporalBucket) {
+      const bucket = profile.temporalBucket;
+      const typicalTopics = bucket.topics.slice(0, 5).join(', ');
+      sections.push(`TEMPORAL CONTEXT: ${bucket.key.replace('_', ' ')} (${bucket.visitCount} past visits)\nTypical topics at this time: ${typicalTopics || 'not enough data yet'}`);
+    }
+
+    // 6. Open tab titles
+    if (profile.openTabTitles.length > 0) {
+      sections.push(`OTHER OPEN TABS:\n${profile.openTabTitles.map(t => `- ${t}`).join('\n')}`);
+    }
+
+    // 7. Transform feedback — engagement rates
+    if (profile.transformFeedback.length > 0) {
+      const feedbackLines = profile.transformFeedback
+        .filter(f => f.appliedCount > 0)
+        .map(f => {
+          const rate = f.appliedCount > 0
+            ? ((f.engagedCount / f.appliedCount) * 100).toFixed(0)
+            : '0';
+          return `- ${f.action}: ${rate}% engagement (${f.engagedCount}/${f.appliedCount})`;
+        })
+        .join('\n');
+      if (feedbackLines) {
+        sections.push(`TRANSFORM EFFECTIVENESS:\n${feedbackLines}\nFavor actions with higher engagement rates.`);
+      }
+    }
+
+    // 8. Seed context — only for cold start
+    if (profile.topicModel.length < 5 && profile.seedContext) {
+      sections.push(`SEED CONTEXT (cold start):\n${profile.seedContext}`);
+    }
+  } else {
+    // Fallback for base UserProfile
+    if (profile.interests.length > 0) {
+      sections.push(`Interests: ${profile.interests.join(", ")}`);
+    }
+    if (profile.seedContext) {
+      sections.push(profile.seedContext);
+    }
+  }
+
+  const profileContext = sections.join('\n\n');
 
   return `You are an intelligent web page optimizer. Given a user's intent profile and a semantic skeleton of a web page, your job is to return surgical DOM transform instructions that reshape the page to surface what's most relevant to the user.
 
