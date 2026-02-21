@@ -1,5 +1,5 @@
 import { ProfileManager } from './profile-manager.js';
-import { generateTransforms, generateLinkPreviews } from './llm-engine.js';
+import { generateTransforms, generateLinkPreviews, invalidateSettingsCache } from './llm-engine.js';
 import {
   initializeAggregator,
   processPageSignal,
@@ -14,7 +14,9 @@ import type {
   PageSignalsMessage,
   EngagementEventMessage,
   LinkPreviewMessage,
+  ExtensionSettings,
 } from '../types/interfaces.js';
+import { DEFAULT_SETTINGS } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
 // Module-level singletons — service workers are event-driven, not persistent,
@@ -68,6 +70,14 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    if (message.type === "SETTINGS_UPDATED") {
+      invalidateSettingsCache();
+      console.log("[Predictive Browser] Settings updated");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sendResponse as (r: any) => void)({ type: "SETTINGS_ACKNOWLEDGED" });
+      return false;
+    }
+
     if ((message as unknown as { type: string }).type === "UPDATE_FOCUS") {
       const focus = (message as unknown as { payload?: { focus?: string } }).payload?.focus ?? "";
       ensureInitialized()
@@ -98,6 +108,18 @@ async function handleSkeleton(
   sendResponse: (response: TransformMessage | ErrorMessage) => void
 ): Promise<void> {
   try {
+    // Check if extension is enabled
+    const stored = await chrome.storage.local.get("extensionSettings");
+    const settings: ExtensionSettings = { ...DEFAULT_SETTINGS, ...stored["extensionSettings"] };
+    if (!settings.enabled) {
+      console.log("[Predictive Browser] Extension is disabled, skipping transforms");
+      sendResponse({
+        type: "TRANSFORMS_READY",
+        payload: { transforms: [], summary: "", inferredIntent: "" }
+      });
+      return;
+    }
+
     await ensureInitialized();
     const baseProfile = profileManager.getProfile();
 

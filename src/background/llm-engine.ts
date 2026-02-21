@@ -1,13 +1,30 @@
-import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction, EnhancedUserProfile, SkeletonNode, LinkPreview } from '../types/interfaces.js';
+import type { PageSkeleton, UserProfile, TransformResponse, TransformInstruction, EnhancedUserProfile, SkeletonNode, LinkPreview, ExtensionSettings } from '../types/interfaces.js';
+import { DEFAULT_SETTINGS } from '../types/interfaces.js';
 
 // ---------------------------------------------------------------------------
-// Gemini Flash API setup
-// Replace GEMINI_API_KEY with your actual key before the demo.
+// Settings — loaded from chrome.storage.local, cached in memory
 // ---------------------------------------------------------------------------
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+let cachedSettings: ExtensionSettings | null = null;
 
-const GEMINI_API_KEY = ""; // Replace before demo
+async function getSettings(): Promise<ExtensionSettings> {
+  if (cachedSettings) return cachedSettings;
+  try {
+    const stored = await chrome.storage.local.get("extensionSettings");
+    const merged: ExtensionSettings = { ...DEFAULT_SETTINGS, ...stored["extensionSettings"] };
+    if (stored["extensionSettings"]?.enabledActions) {
+      merged.enabledActions = { ...DEFAULT_SETTINGS.enabledActions, ...stored["extensionSettings"].enabledActions };
+    }
+    cachedSettings = merged;
+  } catch {
+    cachedSettings = { ...DEFAULT_SETTINGS };
+  }
+  return cachedSettings!;
+}
+
+/** Called by service worker when settings change */
+export function invalidateSettingsCache(): void {
+  cachedSettings = null;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -17,9 +34,9 @@ export async function generateTransforms(
   skeleton: PageSkeleton,
   profile: UserProfile | EnhancedUserProfile
 ): Promise<TransformResponse> {
-  const prompt = buildPrompt(skeleton, profile);
+  const prompt = await buildPrompt(skeleton, profile);
   const raw = await callGemini(prompt);
-  return parseResponse(raw);
+  return await parseResponse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -30,7 +47,7 @@ function isEnhancedProfile(p: UserProfile | EnhancedUserProfile): p is EnhancedU
   return 'topicModel' in p;
 }
 
-function buildPrompt(skeleton: PageSkeleton, profile: UserProfile | EnhancedUserProfile): string {
+async function buildPrompt(skeleton: PageSkeleton, profile: UserProfile | EnhancedUserProfile): Promise<string> {
   const sections: string[] = [];
 
   // 1. Current focus (always included if set)
@@ -105,6 +122,24 @@ function buildPrompt(skeleton: PageSkeleton, profile: UserProfile | EnhancedUser
 
   const profileContext = sections.join('\n\n');
 
+  // Build intensity and enabled actions guidance from settings
+  const settings = await getSettings();
+  const allActions = ["highlight", "collapse", "reorder", "annotate", "dim"] as const;
+  const enabledActions = allActions.filter(a => settings.enabledActions[a]);
+  const actionsStr = enabledActions.map(a => `"${a}"`).join(", ");
+
+  let intensityRule: string;
+  switch (settings.intensity) {
+    case "conservative":
+      intensityRule = "Be very selective. Only transform elements you're highly confident about. Prefer fewer, higher-quality transforms (3-5 max).";
+      break;
+    case "aggressive":
+      intensityRule = "Transform aggressively. Reshape the page significantly. Use 10-15 transforms.";
+      break;
+    default:
+      intensityRule = "Be conservative: if unsure, don't transform. A wrong transform is worse than no transform. Return 5-15 transforms max. Quality over quantity.";
+  }
+
   return `You are an intelligent web page optimizer. Given a user's intent profile and a semantic skeleton of a web page, your job is to return surgical DOM transform instructions that reshape the page to surface what's most relevant to the user.
 
 USER PROFILE:
@@ -119,7 +154,7 @@ ${JSON.stringify(skeleton.nodes, null, 0)}
 INSTRUCTIONS:
 Analyze the page structure and the user's intent. Return a JSON object with:
 1. "transforms": an array of transform instructions. Each has:
-   - "action": one of "highlight", "collapse", "reorder", "annotate", "dim"
+   - "action": one of ${actionsStr}
    - "selector": the CSS selector from the skeleton (copy exactly)
    - "reason": brief explanation (5-10 words)
    - "relevance": 0-100 score
@@ -129,13 +164,13 @@ Analyze the page structure and the user's intent. Return a JSON object with:
 3. "inferredIntent": one sentence describing what you think the user wants
 
 RULES:
+- ONLY use these actions: ${actionsStr}. Do NOT use any other action types.
 - Use "highlight" for elements directly relevant to the user's intent
 - Use "collapse" for sections that are noise (e.g., unrelated news, ads, promotional content)
 - Use "reorder" sparingly — only move things to "top" if they're clearly the most important
 - Use "annotate" to add helpful context (e.g., "★ Relevant to your job search")
 - Use "dim" for low-relevance but not totally irrelevant content
-- Be conservative: if unsure, don't transform. A wrong transform is worse than no transform.
-- Return 5-15 transforms max. Quality over quantity.
+- ${intensityRule}
 - Only use selectors that exist in the skeleton. Never invent selectors.
 
 Return ONLY valid JSON. No markdown, no backticks, no explanation outside the JSON.`;
@@ -146,7 +181,14 @@ Return ONLY valid JSON. No markdown, no backticks, no explanation outside the JS
 // ---------------------------------------------------------------------------
 
 async function callGemini(prompt: string): Promise<string> {
-  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+  const settings = await getSettings();
+  if (!settings.apiKey) {
+    throw new Error("Please set your Gemini API key in the extension settings (click the extension icon).");
+  }
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${settings.model}:generateContent`;
+
+  const response = await fetch(`${apiUrl}?key=${settings.apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -172,7 +214,7 @@ async function callGemini(prompt: string): Promise<string> {
 // Response Parsing — defensive, never crashes
 // ---------------------------------------------------------------------------
 
-function parseResponse(raw: string): TransformResponse {
+async function parseResponse(raw: string): Promise<TransformResponse> {
   try {
     // Strip markdown code fences if present (Gemini sometimes adds them despite JSON mode)
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -183,13 +225,17 @@ function parseResponse(raw: string): TransformResponse {
       throw new Error("Missing transforms array");
     }
 
+    // Filter by enabled actions from settings
+    const settings = await getSettings();
+    const enabledActions = (["highlight", "collapse", "reorder", "annotate", "dim"] as const)
+      .filter(a => settings.enabledActions[a]);
+
     // Validate each transform — drop malformed entries rather than crashing
-    const validActions = ["highlight", "collapse", "reorder", "annotate", "dim"];
     const validTransforms: TransformInstruction[] = parsed.transforms.filter((t: unknown) => {
       if (typeof t !== "object" || t === null) return false;
       const transform = t as Record<string, unknown>;
       return (
-        validActions.includes(transform["action"] as string) &&
+        enabledActions.includes(transform["action"] as typeof enabledActions[number]) &&
         typeof transform["selector"] === "string" &&
         (transform["selector"] as string).length > 0 &&
         typeof transform["relevance"] === "number"

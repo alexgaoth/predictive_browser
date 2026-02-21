@@ -231,7 +231,48 @@ export interface EnhancedUserProfile extends UserProfile {
 }
 
 // ---------------------------------------------------------------------------
-// Interface Contract 7: Link Previews (Second Pass)
+// Interface Contract 7: Extension Settings
+// ---------------------------------------------------------------------------
+
+export type GeminiModel = "gemini-2.0-flash" | "gemini-2.0-flash-lite" | "gemini-1.5-pro";
+export type TransformIntensity = "conservative" | "balanced" | "aggressive";
+
+export interface ExtensionSettings {
+  apiKey: string;
+  enabled: boolean;
+  model: GeminiModel;
+  intensity: TransformIntensity;
+  enabledActions: {
+    highlight: boolean;
+    collapse: boolean;
+    dim: boolean;
+    annotate: boolean;
+    reorder: boolean;
+  };
+}
+
+export const DEFAULT_SETTINGS: ExtensionSettings = {
+  apiKey: "",
+  enabled: true,
+  model: "gemini-2.0-flash",
+  intensity: "balanced",
+  enabledActions: {
+    highlight: true,
+    collapse: true,
+    dim: true,
+    annotate: true,
+    reorder: true,
+  },
+};
+
+/** Popup → Background: "Settings have been updated" */
+export interface SettingsUpdatedMessage {
+  type: "SETTINGS_UPDATED";
+  payload: ExtensionSettings;
+}
+
+// ---------------------------------------------------------------------------
+// Interface Contract 8: Link Previews (Second Pass)
 // ---------------------------------------------------------------------------
 
 /** A preview of a linked page */
@@ -267,4 +308,5 @@ export type ExtensionMessage =
   | ErrorMessage
   | PageSignalsMessage
   | EngagementEventMessage
-  | LinkPreviewMessage;
+  | LinkPreviewMessage
+  | SettingsUpdatedMessage;

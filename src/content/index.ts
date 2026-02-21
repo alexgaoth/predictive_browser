@@ -7,6 +7,15 @@ import { startSignalCollection } from './signal-collector.js';
 import type { TransformResponse, LinkPreviewMessage } from '../types/interfaces.js';
 
 async function main() {
+  // 0. Check if extension is enabled
+  try {
+    const stored = await chrome.storage.local.get("extensionSettings");
+    if (stored["extensionSettings"]?.enabled === false) {
+      console.log("[Predictive Browser] Extension is disabled, skipping.");
+      return;
+    }
+  } catch { /* proceed if storage read fails */ }
+
   // 1. Wait for page to settle (handle SPAs)
   await waitForDomStable();
 

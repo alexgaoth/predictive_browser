@@ -1,6 +1,6 @@
 /* =========================================================
-   Predictive Browser Popup — Dark developer-tool aesthetic
-   Width: 320px, clean and minimal
+   Predictive Browser Dashboard — Dark developer-tool aesthetic
+   Width: 340px, scrollable settings panel
    ========================================================= */
 
 * {
@@ -10,7 +10,9 @@
 }
 
 body {
-  width: 320px;
+  width: 340px;
+  max-height: 520px;
+  overflow-y: auto;
   background: #0f1117;
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -22,10 +24,16 @@ body {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-/* Header */
+/* Header row with toggle */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 h1 {
   font-size: 15px;
   font-weight: 600;
@@ -33,10 +41,21 @@ h1 {
   letter-spacing: -0.01em;
 }
 
-.subtitle {
-  font-size: 12px;
-  color: #64748b;
-  line-height: 1.4;
+/* Sections */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-header {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-top: 6px;
+  border-top: 1px solid #1e2433;
 }
 
 /* Input group */
@@ -46,15 +65,11 @@ h1 {
   gap: 6px;
 }
 
-.input-group label {
-  font-size: 11px;
-  font-weight: 500;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-textarea {
+/* Shared input styles */
+textarea,
+input[type="password"],
+input[type="text"],
+select {
   width: 100%;
   background: #1e2433;
   border: 1px solid #2d3748;
@@ -64,22 +79,202 @@ textarea {
   font-family: inherit;
   line-height: 1.5;
   padding: 8px 10px;
-  resize: vertical;
   outline: none;
   transition: border-color 0.15s ease;
 }
 
-textarea::placeholder {
+textarea {
+  resize: vertical;
+}
+
+textarea::placeholder,
+input::placeholder {
   color: #475569;
 }
 
-textarea:focus {
+textarea:focus,
+input:focus,
+select:focus {
   border-color: #6366f1;
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
-/* Save button */
-button#save {
+/* Password field with show/hide */
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-field input {
+  padding-right: 54px;
+}
+
+.btn-icon {
+  position: absolute;
+  right: 4px;
+  background: #2d3748;
+  border: none;
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.btn-icon:hover {
+  color: #e2e8f0;
+}
+
+/* Warning text */
+.warning {
+  font-size: 11px;
+  color: #fb923c;
+  padding: 0 2px;
+}
+
+.warning.hidden {
+  display: none;
+}
+
+/* Select dropdown */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  cursor: pointer;
+}
+
+select option {
+  background: #1e2433;
+  color: #e2e8f0;
+}
+
+/* Radio group */
+.radio-group {
+  display: flex;
+  gap: 2px;
+  background: #1e2433;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.radio-option {
+  flex: 1;
+  cursor: pointer;
+}
+
+.radio-option input {
+  display: none;
+}
+
+.radio-label {
+  display: block;
+  text-align: center;
+  padding: 5px 0;
+  font-size: 12px;
+  border-radius: 4px;
+  color: #94a3b8;
+  transition: all 0.15s ease;
+}
+
+.radio-option input:checked + .radio-label {
+  background: #6366f1;
+  color: #fff;
+}
+
+.radio-option:hover .radio-label {
+  color: #e2e8f0;
+}
+
+/* Checkbox group */
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.checkbox-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  accent-color: #6366f1;
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #2d3748;
+  border-radius: 20px;
+  transition: background 0.2s ease;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: #e2e8f0;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.toggle-switch input:checked + .slider {
+  background: #6366f1;
+}
+
+.toggle-switch input:checked + .slider::before {
+  transform: translateX(16px);
+}
+
+/* Buttons */
+.btn {
+  width: 100%;
+  padding: 8px 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  letter-spacing: 0.01em;
+}
+
+.btn-primary {
   width: 100%;
   padding: 8px 0;
   background: #6366f1;
@@ -90,18 +285,17 @@ button#save {
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
-  letter-spacing: 0.01em;
 }
 
-button#save:hover {
+.btn-primary:hover {
   background: #5558e3;
 }
 
-button#save:active {
+.btn-primary:active {
   transform: scale(0.98);
 }
 
-button#save:disabled {
+.btn-primary:disabled {
   background: #3d4261;
   cursor: not-allowed;
   transform: none;
