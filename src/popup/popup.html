@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Predictive Browser</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🔮 Predictive Browser</h1>
+    <p class="subtitle">Tell me what you're focused on and I'll reshape the web for you.</p>
+
+    <div class="input-group">
+      <label for="focus">Current focus</label>
+      <textarea
+        id="focus"
+        placeholder="e.g., Looking for ML engineering roles at early-stage startups..."
+        rows="3"
+      ></textarea>
+    </div>
+
+    <button id="save">Save</button>
+
+    <div id="status" class="status hidden"></div>
+
+    <div class="footer">
+      <p>Active on all pages • Powered by Gemini Flash</p>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
