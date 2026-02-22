@@ -12,7 +12,8 @@
       dim: true,
       annotate: true,
       reorder: true
-    }
+    },
+    removeGrayedSections: true
   };
   var focusInput = document.getElementById("focus");
   var saveFocusBtn = document.getElementById("save-focus");
@@ -24,6 +25,7 @@
   var modelSelect = document.getElementById("model");
   var saveSettingsBtn = document.getElementById("save-settings");
   var statusDiv = document.getElementById("status");
+  var removeGrayedToggle = document.getElementById("remove-grayed");
   var actionCheckboxes = {
     highlight: document.getElementById("action-highlight"),
     collapse: document.getElementById("action-collapse"),
@@ -51,6 +53,7 @@
       for (const [action, checkbox] of Object.entries(actionCheckboxes)) {
         checkbox.checked = settings.enabledActions[action] ?? true;
       }
+      removeGrayedToggle.checked = settings.removeGrayedSections ?? true;
     } catch (e) {
       console.error("[Predictive Browser Popup] Could not load settings:", e);
     }
@@ -95,7 +98,8 @@
         dim: actionCheckboxes.dim.checked,
         annotate: actionCheckboxes.annotate.checked,
         reorder: actionCheckboxes.reorder.checked
-      }
+      },
+      removeGrayedSections: removeGrayedToggle.checked
     };
     keyWarning.classList.add("hidden");
     if (settings.apiKey && (!settings.apiKey.startsWith("AIza") || settings.apiKey.length < 30)) {

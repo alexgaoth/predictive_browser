@@ -14,6 +14,7 @@ interface ExtensionSettings {
     annotate: boolean;
     reorder: boolean;
   };
+  removeGrayedSections: boolean;
 }
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -28,6 +29,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
     annotate: true,
     reorder: true,
   },
+  removeGrayedSections: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,7 @@ const keyWarning = document.getElementById("key-warning") as HTMLDivElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
 const saveSettingsBtn = document.getElementById("save-settings") as HTMLButtonElement;
 const statusDiv = document.getElementById("status") as HTMLDivElement;
+const removeGrayedToggle = document.getElementById("remove-grayed") as HTMLInputElement;
 
 // Action checkboxes
 const actionCheckboxes: Record<string, HTMLInputElement> = {
@@ -84,6 +87,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     for (const [action, checkbox] of Object.entries(actionCheckboxes)) {
       checkbox.checked = settings.enabledActions[action as keyof typeof settings.enabledActions] ?? true;
     }
+
+    // Set behavior toggles
+    removeGrayedToggle.checked = settings.removeGrayedSections ?? true;
   } catch (e) {
     console.error("[Predictive Browser Popup] Could not load settings:", e);
   }
@@ -145,6 +151,7 @@ saveSettingsBtn.addEventListener("click", async () => {
       annotate: actionCheckboxes.annotate.checked,
       reorder: actionCheckboxes.reorder.checked,
     },
+    removeGrayedSections: removeGrayedToggle.checked,
   };
 
   // Validate API key (warn but don't block)

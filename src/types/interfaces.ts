@@ -253,6 +253,8 @@ export interface ExtensionSettings {
     annotate: boolean;
     reorder: boolean;
   };
+  /** When true, dimmed sections are fully collapsed/removed. When false, only greyed out. Default: true */
+  removeGrayedSections: boolean;
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -267,6 +269,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     annotate: true,
     reorder: true,
   },
+  removeGrayedSections: true,
 };
 
 /** Popup → Background: "Settings have been updated" */
